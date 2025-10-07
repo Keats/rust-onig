@@ -3,6 +3,8 @@
 //!
 //! # Examples
 //!
+//! ## Single Regex Usage
+//!
 //! ```rust
 //! use onig::Regex;
 //!
@@ -14,6 +16,17 @@
 //!          None =>
 //!              println!("Group {} is not captured", i)
 //!     }
+//! }
+//! ```
+//!
+//! ## Multiple Regex Usage with RegSet
+//!
+//! ```rust
+//! use onig::RegSet;
+//!
+//! let set = RegSet::new(&[r"\d+", r"[a-z]+", r"[A-Z]+"]).unwrap();
+//! if let Some((regex_index, pos)) = set.find("hello123WORLD") {
+//!     println!("Regex {} matched at position {}", regex_index, pos);
 //! }
 //! ```
 //!
@@ -69,6 +82,27 @@
 //! and end of the match as `Regex::find` does, the latter exposes the
 //! whole capture group information as `Regex::captures` does.
 //!
+//! ## Multiple Pattern Matching with RegSet
+//!
+//! For matching against multiple patterns simultaneously, the `RegSet`
+//! type allows you to test a string against many regexes at once and
+//! determine which one matched first. This is more efficient than
+//! testing each regex individually. Both basic position matching with
+//! `RegSet::find` and full capture group information with
+//! `RegSet::captures` are supported.
+//!
+//! ### Dynamic Pattern Replacement
+//!
+//! ```rust
+//! use onig::RegSet;
+//!
+//! let mut set = RegSet::new(&[r"\d+", r"[a-z]+"]).unwrap();
+//! set.replace_pattern(0, r"[A-Z]+").unwrap();
+//!
+//! assert!(set.find("123").is_none());
+//! assert!(set.find("ABC").is_some());
+//! ```
+//!
 //! # The `std::pattern` API
 //!
 //! In addition to the main Oniguruma API it is possible to use the
@@ -95,6 +129,7 @@ mod flags;
 mod match_param;
 mod names;
 mod region;
+mod regset;
 mod replace;
 mod syntax;
 mod tree;
@@ -111,6 +146,7 @@ pub use crate::find::{
 pub use crate::flags::*;
 pub use crate::match_param::MatchParam;
 pub use crate::region::Region;
+pub use crate::regset::{RegSet, RegSetLead};
 pub use crate::replace::Replacer;
 pub use crate::syntax::{MetaChar, Syntax};
 pub use crate::tree::{CaptureTreeNode, CaptureTreeNodeIter};
@@ -387,10 +423,12 @@ impl Regex {
     /// ```
     /// use onig::{Regex, SearchOptions};
     ///
-    /// let r = Regex::new(".*").unwrap();
-    /// let res = r.match_with_options("hello", 0, SearchOptions::SEARCH_OPTION_NONE, None);
-    /// assert!(res.is_some()); // it matches
-    /// assert!(res.unwrap() == 5); // 5 characters matched
+    /// fn main() {
+    ///   let r = Regex::new(".*").unwrap();
+    ///   let res = r.match_with_options("hello", 0, SearchOptions::SEARCH_OPTION_NONE, None);
+    ///   assert!(res.is_some()); // it matches
+    ///   assert!(res.unwrap() == 5); // 5 characters matched
+    /// }
     /// ```
     pub fn match_with_options(
         &self,
@@ -831,6 +869,19 @@ impl Regex {
     /// Get the Size of the Capture Histories for this Pattern
     pub fn capture_histories_len(&self) -> usize {
         unsafe { onig_sys::onig_number_of_capture_histories(self.raw) as usize }
+    }
+
+    /// Get the raw Oniguruma regex pointer
+    ///
+    /// This method is primarily intended for internal use by other parts
+    /// of the onig crate, such as RegSet.
+    ///
+    /// # Safety
+    ///
+    /// The returned pointer is valid as long as this `Regex` instance exists.
+    /// Users should not call `onig_free` on this pointer directly.
+    pub(crate) fn as_raw(&self) -> onig_sys::OnigRegex {
+        self.raw
     }
 }
 
